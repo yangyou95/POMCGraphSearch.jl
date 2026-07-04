@@ -88,13 +88,15 @@ function Simulate(model::Model,
 				k_a::Float64,
 				alpha_a::Float64)
 
+	# return lower value and upper value 
+
 	if depth > max_depth
-		return 0
+		return 0, maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
 	end
 
 
 	if (discount^depth) * (Q_learning_policy._R_max - Q_learning_policy._R_min) < epsilon || isterminal(model, s)
-		return 0
+		return 0, maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
 	end
 
 
@@ -115,32 +117,38 @@ function Simulate(model::Model,
 											a, 
 											discount, 
 											Q_learning_policy, 
-											ratio_heuristic_Q)
+											ratio_heuristic_Q), maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
 	end
 
 	sp, o, r = Step(model, s, a)
 	nI_next = fsc._eta[nI][Pair(a, o)]
 
+	lower, upper = Simulate(model, 
+							fsc, 
+							sp, 
+							nI_next, 
+							depth + 1, 
+							max_depth, 
+							discount, 
+							C_star, 
+							epsilon, 
+							Q_learning_policy, 
+							ratio_heuristic_Q, 
+							bool_APW,
+							k_a,
+							alpha_a)
 
-	esti_V = fsc._nodes[nI]._R_action[a] + discount * Simulate(model, 
-																fsc, 
-																sp, 
-																nI_next, 
-																depth + 1, 
-																max_depth, 
-																discount, 
-																C_star, 
-																epsilon, 
-																Q_learning_policy, 
-																ratio_heuristic_Q, 
-																bool_APW,
-																k_a,
-																alpha_a)
+	esti_V_lower = fsc._nodes[nI]._R_action[a] + discount * lower
+	esti_V_upper = fsc._nodes[nI]._R_action[a] + discount * upper
 
-	fsc._nodes[nI]._Q_action[a] = fsc._nodes[nI]._Q_action[a] + ((esti_V - fsc._nodes[nI]._Q_action[a]) / fsc._nodes[nI]._visits_action[a])
-	fsc._nodes[nI]._V_node = esti_V
+	fsc._nodes[nI]._Q_action[a] = fsc._nodes[nI]._Q_action[a] + ((esti_V_lower - fsc._nodes[nI]._Q_action[a]) / fsc._nodes[nI]._visits_action[a])
+	fsc._nodes[nI]._V_node = esti_V_lower
 
-	return esti_V
+
+	fsc._nodes[nI]._Heuristic_Q_action[a] = fsc._nodes[nI]._Heuristic_Q_action[a] + ((esti_V_upper - fsc._nodes[nI]._Heuristic_Q_action[a]) / fsc._nodes[nI]._visits_action[a])
+
+
+	return esti_V_lower, esti_V_upper
 end
 
 
@@ -222,6 +230,10 @@ function MCGraphSearchPOMDP(model::Model,
 
 			row_string = @sprintf "%6d %18d %12d %15.6f %15.6f %18.6f" iter i fsc_size L U sum_planning_time_secs
             println(row_string)
+
+			println("root lower V:", fsc._nodes[1]._Q_action[fsc._nodes[1]._best_action])
+			println("root upper V:", fsc._nodes[1]._Heuristic_Q_action[fsc._nodes[1]._best_action])
+
 
 			push!(planner._Log_result._vec_episodes, i)
 			push!(planner._Log_result._vec_fsc_size, length(fsc._prunned_node_list))
