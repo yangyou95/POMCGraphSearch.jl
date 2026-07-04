@@ -48,7 +48,12 @@ function ProcessActionWeightedParticle(model::Model,
 			all_dict_weighted_samples[o] = merged_belief_for_unexpected_obs
 			all_oI_weight[o] = 0.0
 		end
+
+		fsc._nodes[nI]._dict_a_o_weights[a][o] = all_oI_weight[o] / sum_all_weights
+
+
 	end
+
 
 	# for each new belief, check distances to existing belief nodes, and create new nodes if needed
 	for (key, value) in all_dict_weighted_samples
@@ -63,8 +68,7 @@ function ProcessActionWeightedParticle(model::Model,
 			fsc._nodes[n_nextI]._V_node = max_Q
 		end
 		fsc._eta[nI][Pair(a, key)] = n_nextI
-		obs_weight = all_oI_weight[key]
-		expected_future_V += (obs_weight / sum_all_weights) * fsc._nodes[n_nextI]._V_node
+		expected_future_V += fsc._nodes[nI]._dict_a_o_weights[a][key] * fsc._nodes[n_nextI]._V_node
 	end
 
 	# --- Update Q(n, a) -----
@@ -90,14 +94,14 @@ function Simulate(model::Model,
 
 	# return lower value and upper value 
 
-	if depth > max_depth
+	if depth > max_depth || (discount^depth) * (Q_learning_policy._R_max - Q_learning_policy._R_min) < epsilon
 		return 0, maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
 	end
 
 
-	if (discount^depth) * (Q_learning_policy._R_max - Q_learning_policy._R_min) < epsilon || isterminal(model, s)
-		return 0, maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
-	end
+	# if (discount^depth) * (Q_learning_policy._R_max - Q_learning_policy._R_min) < epsilon || isterminal(model, s)
+	# 	return 0, maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
+	# end
 
 
 	if bool_APW
@@ -105,6 +109,8 @@ function Simulate(model::Model,
     else
         a = UcbActionSelection(fsc, nI, C_star)
     end
+
+	# a = UpperBoundActionSelection(fsc, nI)
 
 
 	fsc._nodes[nI]._visits_node += 1
@@ -120,8 +126,11 @@ function Simulate(model::Model,
 											ratio_heuristic_Q), maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
 	end
 
-	sp, o, r = Step(model, s, a)
-	nI_next = fsc._eta[nI][Pair(a, o)]
+	sp, o_selected, r = Step(model, s, a)
+
+	# o_selected, excess_uncertainty = SelectObs(fsc, nI, a)
+
+	nI_next = fsc._eta[nI][Pair(a, o_selected)]
 
 	lower, upper = Simulate(model, 
 							fsc, 
@@ -148,6 +157,13 @@ function Simulate(model::Model,
 	fsc._nodes[nI]._Heuristic_Q_action[a] = fsc._nodes[nI]._Heuristic_Q_action[a] + ((esti_V_upper - fsc._nodes[nI]._Heuristic_Q_action[a]) / fsc._nodes[nI]._visits_action[a])
 
 
+	# update U and L
+	# fsc._nodes[nI]._V_lower = fsc._nodes[nI]._Q_action[fsc._nodes[nI]._best_action]
+	# fsc._nodes[nI]._V_upper = fsc._nodes[nI]._Heuristic_Q_action[fsc._nodes[nI]._best_action]
+	fsc._nodes[nI]._V_lower = fsc._nodes[nI]._Q_action[a]
+	fsc._nodes[nI]._V_upper = fsc._nodes[nI]._Heuristic_Q_action[a]
+
+
 	return esti_V_lower, esti_V_upper
 end
 
@@ -163,7 +179,7 @@ function MCGraphSearchPOMDP(model::Model,
 	b0 = initialstate(pomdp)
 
 	# assume an empty fsc
-	node_start = CreateNode(dict_weighted_b, fsc._action_space)
+	node_start = CreateNode(dict_weighted_b, fsc._action_space, fsc._observation_space)
 	heuristic_value, action_space, heuristic_Q_actions = GetValueQMDP(dict_weighted_b, 
 																	planner._Q_learning_policy, 
 																	model)
@@ -231,8 +247,8 @@ function MCGraphSearchPOMDP(model::Model,
 			row_string = @sprintf "%6d %18d %12d %15.6f %15.6f %18.6f" iter i fsc_size L U sum_planning_time_secs
             println(row_string)
 
-			println("root lower V:", fsc._nodes[1]._Q_action[fsc._nodes[1]._best_action])
-			println("root upper V:", fsc._nodes[1]._Heuristic_Q_action[fsc._nodes[1]._best_action])
+			println("root lower V:", fsc._nodes[1]._V_lower)
+			println("root upper V:", fsc._nodes[1]._V_upper)
 
 
 			push!(planner._Log_result._vec_episodes, i)

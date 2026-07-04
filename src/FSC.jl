@@ -1,4 +1,4 @@
-mutable struct FscNode{A}
+mutable struct FscNode{A, O}
     _Q_action::Dict{A,Float64}
     _Heuristic_Q_action::Dict{A,Float64}
     _R_action::Dict{A,Float64} # expected instant reward 
@@ -7,7 +7,10 @@ mutable struct FscNode{A}
     _V_node::Float64
     _best_action::A
     _dict_weighted_samples::OrderedDict{Int,Float64} # state index -> weight, state index is handled by ModelWrapper
+    _dict_a_o_weights::Dict{A, Dict{O, Float64}}
     _actions::Vector{A} # for continuous action space, store the sampled actions
+    _V_lower::Float64
+    _V_upper::Float64
 end
 
 
@@ -112,8 +115,9 @@ function run_batch_simulations(pomdp::POMDP, fsc::FSC;
 end
 # ------------------ FSC methods ------------------
 
-function InitFscNode(action_space::ASpace) where {ASpace}
+function InitFscNode(action_space::ASpace, obs_space::OSpace) where {ASpace, OSpace}
     A = eltype(action_space)
+    O = eltype(obs_space)
     best_action = first(action_space)
 
     init_actions = []
@@ -122,11 +126,13 @@ function InitFscNode(action_space::ASpace) where {ASpace}
     init_heuristic_Q_action = Dict{A,Float64}()
     init_R_action = Dict{A,Float64}()
     init_visits_action = Dict{A,Int64}()
+    init_dict_a_o_weights = Dict{A, Dict{O, Float64}}()
     for a in action_space
         init_Q_action[a] = 0.0
         init_heuristic_Q_action[a] = 0.0
         init_R_action[a] = 0.0
         init_visits_action[a] = 0
+        init_dict_a_o_weights[a] = Dict{O, Float64}()
         push!(init_actions, a)
     end
     # ------------------------
@@ -134,7 +140,7 @@ function InitFscNode(action_space::ASpace) where {ASpace}
     init_V_node = 0.0
     # --- Weighted Particles ----
     init_dict_weighted_particles = OrderedDict{Int,Float64}()
-    return FscNode{A}(init_Q_action,
+    return FscNode{A, O}(init_Q_action,
                     init_heuristic_Q_action,
                     init_R_action,
                     init_visits_action,
@@ -142,11 +148,14 @@ function InitFscNode(action_space::ASpace) where {ASpace}
                     init_V_node,
                     best_action,
                     init_dict_weighted_particles,
-                    init_actions)
+                    init_dict_a_o_weights,
+                    init_actions,
+                    0.0,
+                    0.0)
 end
 
-function CreateNode(weighted_b::OrderedDict{Int, Float64}, action_space::ASpace) where {ASpace}
-    node = InitFscNode(action_space)
+function CreateNode(weighted_b::OrderedDict{Int, Float64}, action_space::ASpace, obs_space::OSpace) where {ASpace, OSpace}
+    node = InitFscNode(action_space, obs_space)
     node._dict_weighted_samples = weighted_b
     return node
 end
@@ -212,6 +221,7 @@ function UcbActionSelection(fsc::FSC, nI::Int64, C_star::Int64)
         node_a_visits = fsc._nodes[nI]._visits_action[a]
 
         c = (fsc._nodes[nI]._Heuristic_Q_action[a] - fsc._nodes[nI]._Q_action[a])
+
         if node_a_visits == 0
             ratio_visit = log(node_visits + 1) / 0.1
         else
@@ -229,6 +239,62 @@ function UcbActionSelection(fsc::FSC, nI::Int64, C_star::Int64)
 
     return selected_a
 end
+
+
+function UpperBoundActionSelection(fsc::FSC, nI::Int64)
+    node_visits = fsc._nodes[nI]._visits_node
+    max_value = typemin(Float64)
+    current_max_value, selected_a = findmax(fsc._nodes[nI]._Heuristic_Q_action)
+
+    return selected_a
+end
+
+
+function SelectObs(fsc::FSC, nI::Int64, a_best::A) where {A}
+    # Check if action exists in _a_o_weights
+    if !haskey(fsc._nodes[nI]._dict_a_o_weights, a_best)
+        @error "Action $a_best not found in _a_o_weights"
+        return -1, -Inf
+    end
+    
+    excess_uncertainty = -Inf
+    o_selected = rand(fsc._observation_space)
+    
+    for (o, w) in fsc._nodes[nI]._dict_a_o_weights[a_best]
+        ao_edge = Pair(a_best, o)
+        
+        # Check if child exists
+        if !haskey(fsc._eta[nI], ao_edge)
+            @warn "Child node for ($a_best, $o) not found, skipping"
+            continue
+        end
+        
+        next_nI = fsc._eta[nI][ao_edge]
+        U = fsc._nodes[next_nI]._V_upper
+        L = fsc._nodes[next_nI]._V_lower
+        gap = U - L
+        
+
+        # Warning for U < L
+        if U < L && abs(U - L) > 1e-2
+            @warn "U < L for obs $o (U=$U, L=$L), FSC node=$(child._fsc_node_index)"
+        end
+        
+        weighted_gap = w * gap
+        if weighted_gap > excess_uncertainty
+            excess_uncertainty = weighted_gap
+            o_selected = o
+        end
+    end
+    
+    # if o_selected == -1
+    #     @error "No valid observation selected for action $a_best"
+    #     throw(ErrorException("SelectObs: Could not select a valid observation"))
+    # end
+    
+    return o_selected, excess_uncertainty
+end
+
 
 function ActionProgressiveWidening(fsc::FSC, nI::Int, action_space, K_a::Float64, alpha_a::Float64, C_star::Int64)
     node_visits = fsc._nodes[nI]._visits_node
@@ -312,7 +378,7 @@ function SearchOrInsertBelief(
 
     # Insert new node if no close match found
     if min_distance > b_gap_max
-        new_node = CreateNode(new_weighted_particles, fsc._action_space)
+        new_node = CreateNode(new_weighted_particles, fsc._action_space, fsc._observation_space)
         push!(fsc._nodes, new_node)
         push!(fsc._nodes_VQMDP_labels, new_heuristic_value)
         return false, length(fsc._nodes)
@@ -502,6 +568,7 @@ function HeuristicNodeQ(node::FscNode, Heuristic_Q_actions::Dict{A, Float64}, ra
 
 		if value > max_value
 			max_value = value
+            node._best_action = a
 		end
 	end
 	return ratio*max_value
