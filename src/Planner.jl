@@ -112,6 +112,7 @@ function Simulate(model::Model,
         a = ActionProgressiveWidening(fsc, nI, fsc._action_space, k_a, alpha_a, C_star)
     else
         a = UcbActionSelection(fsc, nI, C_star)
+		# a = UpperBoundActionSelection(fsc, nI)
     end
 
 	# a = UpperBoundActionSelection(fsc, nI)
@@ -162,10 +163,8 @@ function Simulate(model::Model,
 
 
 	# update U and L
-	# fsc._nodes[nI]._V_lower = fsc._nodes[nI]._Q_action[fsc._nodes[nI]._best_action]
-	# fsc._nodes[nI]._V_upper = fsc._nodes[nI]._Heuristic_Q_action[fsc._nodes[nI]._best_action]
-	fsc._nodes[nI]._V_lower = fsc._nodes[nI]._Q_action[a]
-	fsc._nodes[nI]._V_upper = fsc._nodes[nI]._Heuristic_Q_action[a]
+	fsc._nodes[nI]._V_lower = fsc._nodes[nI]._Q_action[GetBestAction(fsc._nodes[nI])]
+	fsc._nodes[nI]._V_upper = fsc._nodes[nI]._Heuristic_Q_action[GetBestAction(fsc._nodes[nI])]
 
 
 	return esti_V_lower, esti_V_upper
@@ -237,22 +236,26 @@ function MCGraphSearchPOMDP(model::Model,
 
             iter = Int(i ÷ planner._nb_sim)
             fsc_size = length(fsc._nodes)
-			U, L = EvaluateBounds(pomdp, 
-									fsc, 
-									planner._Q_learning_policy, 
-									POMDPs.discount(pomdp), 
-									planner._nb_eval, 
-									planner._C_star,
-									planner._epsilon,
-									planner._Log_result._vec_evaluation_value,
-									planner._Log_result._vec_upper_bound)
-			
+			# U, L = EvaluateBounds(pomdp, 
+			# 						fsc, 
+			# 						planner._Q_learning_policy, 
+			# 						POMDPs.discount(pomdp), 
+			# 						planner._nb_eval, 
+			# 						planner._C_star,
+			# 						planner._epsilon,
+			# 						planner._Log_result._vec_evaluation_value,
+			# 						planner._Log_result._vec_upper_bound)
+
+			U = fsc._nodes[1]._V_upper
+			L = fsc._nodes[1]._V_lower
+
+			# println("root upper V:", U)
+			# println("root lower V:", L)
 
 			row_string = @sprintf "%6d %18d %12d %15.6f %15.6f %18.6f" iter i fsc_size L U sum_planning_time_secs
             println(row_string)
 
-			println("root lower V:", fsc._nodes[1]._V_lower)
-			println("root upper V:", fsc._nodes[1]._V_upper)
+
 
 
 			push!(planner._Log_result._vec_episodes, i)

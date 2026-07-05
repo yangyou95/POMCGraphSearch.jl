@@ -242,9 +242,21 @@ end
 
 
 function UpperBoundActionSelection(fsc::FSC, nI::Int64)
-    node_visits = fsc._nodes[nI]._visits_node
-    max_value = typemin(Float64)
-    current_max_value, selected_a = findmax(fsc._nodes[nI]._Heuristic_Q_action)
+    # current_max_value, selected_a = findmax(fsc._nodes[nI]._Heuristic_Q_action)
+
+    # selected_a = first(fsc._action_space)
+    # max_value = typemin(Float64)
+
+    # for a in fsc._action_space
+    #     value_temp =  (fsc._nodes[nI]._Heuristic_Q_action[a] - fsc._nodes[nI]._V_lower) / (fsc._nodes[nI]._V_upper - fsc._nodes[nI]._V_lower + 1e-6)  # Avoid division by zero
+    #     if value_temp > max_value
+    #         max_value = value_temp
+    #         selected_a = a
+    #     end
+    # end
+
+    current_max_value, selected_a = findmax(fsc._nodes[nI]._Q_action)
+
 
     return selected_a
 end
