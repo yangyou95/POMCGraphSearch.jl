@@ -94,10 +94,14 @@ function Simulate(model::Model,
 
 	# return lower value and upper value 
 
-	if depth > max_depth || (discount^depth) * (Q_learning_policy._R_max - Q_learning_policy._R_min) < epsilon
+	# if depth > max_depth || (discount^depth) * (Q_learning_policy._R_max - Q_learning_policy._R_min) < epsilon 
+	# 	return 0, maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
+	# end
+
+	
+	if depth > max_depth || (discount^depth) * (Q_learning_policy._R_max - Q_learning_policy._R_min) < epsilon || isterminal(model, s)
 		return 0, maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
 	end
-
 
 	# if (discount^depth) * (Q_learning_policy._R_max - Q_learning_policy._R_min) < epsilon || isterminal(model, s)
 	# 	return 0, maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
