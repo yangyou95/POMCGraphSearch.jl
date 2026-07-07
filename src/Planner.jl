@@ -94,28 +94,17 @@ function Simulate(model::Model,
 
 	# return lower value and upper value 
 
-	# if depth > max_depth || (discount^depth) * (Q_learning_policy._R_max - Q_learning_policy._R_min) < epsilon 
-	# 	return 0, maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
-	# end
-
-	
-	if depth > max_depth || (discount^depth) * (Q_learning_policy._R_max - Q_learning_policy._R_min) < epsilon || isterminal(model, s)
+	if depth > max_depth || (discount^depth) * (Q_learning_policy._R_max - Q_learning_policy._R_min) < epsilon 
 		return 0, maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
 	end
-
-	# if (discount^depth) * (Q_learning_policy._R_max - Q_learning_policy._R_min) < epsilon || isterminal(model, s)
-	# 	return 0, maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
-	# end
 
 
 	if bool_APW
         a = ActionProgressiveWidening(fsc, nI, fsc._action_space, k_a, alpha_a, C_star)
     else
-        a = UcbActionSelection(fsc, nI, C_star)
-		# a = UpperBoundActionSelection(fsc, nI)
+        # a = UcbActionSelection(fsc, nI, C_star)
+		a = CustomActionSelection(fsc, nI)
     end
-
-	# a = UpperBoundActionSelection(fsc, nI)
 
 
 	fsc._nodes[nI]._visits_node += 1
@@ -133,7 +122,7 @@ function Simulate(model::Model,
 
 	sp, o_selected, r = Step(model, s, a)
 
-	# o_selected, excess_uncertainty = SelectObs(fsc, nI, a)
+	o_selected, excess_uncertainty = SelectObs(fsc, nI, a)
 
 	nI_next = fsc._eta[nI][Pair(a, o_selected)]
 
@@ -152,23 +141,38 @@ function Simulate(model::Model,
 							k_a,
 							alpha_a)
 
-	esti_V_lower = fsc._nodes[nI]._R_action[a] + discount * lower
-	esti_V_upper = fsc._nodes[nI]._R_action[a] + discount * upper
 
-	fsc._nodes[nI]._Q_action[a] = fsc._nodes[nI]._Q_action[a] + ((esti_V_lower - fsc._nodes[nI]._Q_action[a]) / fsc._nodes[nI]._visits_action[a])
-	fsc._nodes[nI]._V_node = esti_V_lower
+	esti_V_lower = fsc._nodes[nI]._R_action[a]
+	esti_V_upper = fsc._nodes[nI]._R_action[a]
+
+	for o in fsc._observation_space
+		if o == o_selected
+			esti_V_lower += discount * fsc._nodes[nI]._dict_a_o_weights[a][o] * lower
+			esti_V_upper += discount * fsc._nodes[nI]._dict_a_o_weights[a][o] * upper
+		else
+			nI_next = fsc._eta[nI][Pair(a, o)]
+			esti_V_lower += discount * fsc._nodes[nI]._dict_a_o_weights[a][o] * fsc._nodes[nI_next]._V_lower
+			esti_V_upper += discount * fsc._nodes[nI]._dict_a_o_weights[a][o] * fsc._nodes[nI_next]._V_upper
+		end
+	end
 
 
-	fsc._nodes[nI]._Heuristic_Q_action[a] = fsc._nodes[nI]._Heuristic_Q_action[a] + ((esti_V_upper - fsc._nodes[nI]._Heuristic_Q_action[a]) / fsc._nodes[nI]._visits_action[a])
+	# fsc._nodes[nI]._V_node = esti_V_lower
+
+	fsc._nodes[nI]._Q_action[a] = esti_V_lower
+	fsc._nodes[nI]._Heuristic_Q_action[a] = esti_V_upper
 
 
-	# update U and L
-	fsc._nodes[nI]._V_lower = fsc._nodes[nI]._Q_action[GetBestAction(fsc._nodes[nI])]
-	fsc._nodes[nI]._V_upper = fsc._nodes[nI]._Heuristic_Q_action[GetBestAction(fsc._nodes[nI])]
+	# use with upper bound action selection
+	fsc._nodes[nI]._V_lower = maximum(values(fsc._nodes[nI]._Q_action))
+	fsc._nodes[nI]._V_upper = maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
 
 
-	return esti_V_lower, esti_V_upper
+	fsc._nodes[nI]._V_node = fsc._nodes[nI]._V_lower
+
+	return fsc._nodes[nI]._V_lower, fsc._nodes[nI]._V_upper
 end
+
 
 
 
@@ -187,9 +191,13 @@ function MCGraphSearchPOMDP(model::Model,
 																	planner._Q_learning_policy, 
 																	model)
 
+
 	HeuristicNodeQ(node_start, heuristic_Q_actions, planner._ratio_heuristic_Q)
 	push!(fsc._nodes, node_start)
     push!(fsc._nodes_VQMDP_labels, maximum(values(node_start._Heuristic_Q_action)))
+
+
+
 
 	vec_episodes = Vector{Int64}()
 	vec_evaluation_value = Vector{Float64}()
@@ -236,21 +244,21 @@ function MCGraphSearchPOMDP(model::Model,
 
             iter = Int(i ÷ planner._nb_sim)
             fsc_size = length(fsc._nodes)
-			# U, L = EvaluateBounds(pomdp, 
-			# 						fsc, 
-			# 						planner._Q_learning_policy, 
-			# 						POMDPs.discount(pomdp), 
-			# 						planner._nb_eval, 
-			# 						planner._C_star,
-			# 						planner._epsilon,
-			# 						planner._Log_result._vec_evaluation_value,
-			# 						planner._Log_result._vec_upper_bound)
+			U, L = EvaluateBounds(pomdp, 
+									fsc, 
+									planner._Q_learning_policy, 
+									POMDPs.discount(pomdp), 
+									planner._nb_eval, 
+									planner._C_star,
+									planner._epsilon,
+									planner._Log_result._vec_evaluation_value,
+									planner._Log_result._vec_upper_bound)
 
-			U = fsc._nodes[1]._V_upper
-			L = fsc._nodes[1]._V_lower
+			# U = fsc._nodes[1]._V_upper
+			# L = fsc._nodes[1]._V_lower
 
-			# println("root upper V:", U)
-			# println("root lower V:", L)
+			println("root upper:", fsc._nodes[1]._V_upper)
+			println("root lower:", fsc._nodes[1]._V_lower)
 
 			row_string = @sprintf "%6d %18d %12d %15.6f %15.6f %18.6f" iter i fsc_size L U sum_planning_time_secs
             println(row_string)

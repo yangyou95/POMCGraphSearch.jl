@@ -210,7 +210,6 @@ function UcbActionSelection(fsc::FSC, nI::Int64, C_star::Int64)
     max_value = typemin(Float64)
     current_max_value, selected_a = findmax(fsc._nodes[nI]._Q_action)
 
-
     if node_visits > C_star
         return selected_a
     end
@@ -221,6 +220,21 @@ function UcbActionSelection(fsc::FSC, nI::Int64, C_star::Int64)
         node_a_visits = fsc._nodes[nI]._visits_action[a]
 
         c = (fsc._nodes[nI]._Heuristic_Q_action[a] - fsc._nodes[nI]._Q_action[a])
+
+
+        # this one seems works a bit 
+        # c = (fsc._nodes[nI]._V_upper - fsc._nodes[nI]._Q_action[a]) / fsc._nodes[nI]._V_upper 
+
+        # c = (fsc._nodes[nI]._V_upper - fsc._nodes[nI]._Q_action[a]) / node_a_visits
+
+        # c = (fsc._nodes[nI]._Heuristic_Q_action[a] - fsc._nodes[nI]._Q_action[a]) / node_a_visits
+
+        # c = (current_upper_value - fsc._nodes[nI]._Q_action[a]) / node_a_visits
+
+
+        # c = (current_upper_value - fsc._nodes[nI]._Q_action[a]) / current_upper_value
+
+        # c = (fsc._nodes[nI]._Heuristic_Q_action[a] - fsc._nodes[nI]._Q_action[a]) / fsc._nodes[nI]._Heuristic_Q_action[a]
 
         if node_a_visits == 0
             ratio_visit = log(node_visits + 1) / 0.1
@@ -241,22 +255,23 @@ function UcbActionSelection(fsc::FSC, nI::Int64, C_star::Int64)
 end
 
 
-function UpperBoundActionSelection(fsc::FSC, nI::Int64)
-    # current_max_value, selected_a = findmax(fsc._nodes[nI]._Heuristic_Q_action)
-
-    # selected_a = first(fsc._action_space)
+function CustomActionSelection(fsc::FSC, nI::Int64)
+    # node_visits = fsc._nodes[nI]._visits_node
     # max_value = typemin(Float64)
 
-    # for a in fsc._action_space
-    #     value_temp =  (fsc._nodes[nI]._Heuristic_Q_action[a] - fsc._nodes[nI]._V_lower) / (fsc._nodes[nI]._V_upper - fsc._nodes[nI]._V_lower + 1e-6)  # Avoid division by zero
-    #     if value_temp > max_value
-    #         max_value = value_temp
-    #         selected_a = a
-    #     end
-    # end
 
-    current_max_value, selected_a = findmax(fsc._nodes[nI]._Q_action)
+    current_max_value, selected_a_lower = findmax(fsc._nodes[nI]._Q_action)
 
+    current_upper_value, selected_a_upper = findmax(fsc._nodes[nI]._Heuristic_Q_action)
+
+    # choose upper action with probability 0.5, lower action with probability 0.5
+    if rand() < 0.9
+        selected_a = selected_a_lower
+    else
+        selected_a = selected_a_upper
+    end
+
+    
 
     return selected_a
 end
@@ -575,14 +590,17 @@ function HeuristicNodeQ(node::FscNode, Heuristic_Q_actions::Dict{A, Float64}, ra
         end
 
         node._Heuristic_Q_action[a] = value
-        # node._Q_action[a] = ratio*value
-        node._Q_action[a] = value
+        node._Q_action[a] = ratio*value
+        # node._Q_action[a] = value
 
 		if value > max_value
 			max_value = value
             node._best_action = a
 		end
 	end
+
+    node._V_upper = max_value
+
 	return ratio*max_value
 end
 
