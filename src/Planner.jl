@@ -62,10 +62,21 @@ function ProcessActionWeightedParticle(model::Model,
      	heuristic_value, action_space, heuristic_Q_actions = GetValueQMDP(all_dict_weighted_samples[key], 
 																		Q_learning_policy, 
 																		model)
-		bool_search, n_nextI = SearchOrInsertBelief(fsc, all_dict_weighted_samples[key], heuristic_value, fsc._max_accept_belief_gap)
+		bool_search, n_nextI = SearchOrInsertBelief(model, fsc, all_dict_weighted_samples[key], heuristic_value, fsc._max_accept_belief_gap)
         if !bool_search
             max_Q = HeuristicNodeQ(fsc._nodes[n_nextI], heuristic_Q_actions, ratio_heuristic_Q)
 			fsc._nodes[n_nextI]._V_node = max_Q
+		# else 
+		# 	println("simiar_node_idx:", n_nextI, " lower bound value:", fsc._nodes[n_nextI]._V_lower)
+        # 	esti_lower_value = EstimateLowerValue(all_dict_weighted_samples[key], 
+		# 								discount,
+		# 								40,
+		# 								model,
+		# 								fsc,
+		# 								n_nextI,
+		# 								20)
+
+		# 	println("new belief's esti lower V:", esti_lower_value)
 		end
 		fsc._eta[nI][Pair(a, key)] = n_nextI
 		expected_future_V += fsc._nodes[nI]._dict_a_o_weights[a][key] * fsc._nodes[n_nextI]._V_node
@@ -79,7 +90,6 @@ end
 
 function Simulate(model::Model,
 				fsc::FSC,
-				s::Int,
 				nI::Int64,
 				depth::Int64,
 				max_depth::Int64,
@@ -120,7 +130,6 @@ function Simulate(model::Model,
 											ratio_heuristic_Q), maximum(values(fsc._nodes[nI]._Heuristic_Q_action))
 	end
 
-	sp, o_selected, r = Step(model, s, a)
 
 	o_selected, excess_uncertainty = SelectObs(fsc, nI, a)
 
@@ -128,7 +137,6 @@ function Simulate(model::Model,
 
 	lower, upper = Simulate(model, 
 							fsc, 
-							sp, 
 							nI_next, 
 							depth + 1, 
 							max_depth, 
@@ -171,6 +179,60 @@ function Simulate(model::Model,
 	fsc._nodes[nI]._V_node = fsc._nodes[nI]._V_lower
 
 	return fsc._nodes[nI]._V_lower, fsc._nodes[nI]._V_upper
+end
+
+function EstimateLowerValue(new_weighted_particles::OrderedDict{Int, Float64}, 
+                           discount::Float64,
+                           max_depth::Int,
+                           model::Model,
+                           fsc::FSC,
+                           nI::Int,
+                           num_sim::Int)
+
+    esti_lower_value = 0.0
+    
+    for (s_initial, pb_s) in new_weighted_particles
+        temp_value = 0.0
+        
+        for sim_i in 1:num_sim
+            # 每次模拟重置状态
+            s = deepcopy(s_initial)  # 使用副本
+            step = 0
+            nI_temp = nI
+            
+            while step ≤ max_depth 
+                if isterminal(model, s) || fsc._nodes[nI_temp]._visits_node <= 1
+                    break 
+                end
+                
+                # 获取当前FSC节点的最优动作
+                current_max_value, selected_a_lower = findmax(fsc._nodes[nI_temp]._Q_action)
+                
+                # 环境步进
+                sp, o, r = Step(model, s, selected_a_lower)
+                
+                # 累计折扣回报
+                temp_value += (discount^step) * r  
+                
+                # 查找下一个FSC节点
+                ao_edge = Pair(selected_a_lower, o)
+                
+                if !haskey(fsc._eta[nI_temp], ao_edge)
+                    break
+                end
+                
+                # 更新FSC节点和状态
+                nI_temp = fsc._eta[nI_temp][ao_edge]  # ✓ 使用 nI_temp
+                s = sp
+                step += 1
+            end
+        end
+        
+        temp_value /= num_sim
+        esti_lower_value += temp_value * pb_s
+    end
+    
+    return esti_lower_value
 end
 
 
@@ -216,10 +278,8 @@ function MCGraphSearchPOMDP(model::Model,
 	sum_planning_time_secs = 0
 	for i in 1:planner._nb_iter
 		elapsed_time = @elapsed begin
-			s = rand(b)
 			Simulate(model,
 				fsc,
-				s,
 				1,
 				0,
 				planner._max_search_depth,

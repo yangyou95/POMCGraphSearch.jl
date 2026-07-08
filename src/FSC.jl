@@ -345,6 +345,8 @@ function AddNewAction(n::FscNode, a::A) where {A}
     end
 end
 
+
+
 function SearchSimilarBelief(
     fsc::FSC,
     node_list::Vector{Int64},
@@ -384,12 +386,44 @@ function SearchSimilarBelief(
 end
 
 
+# function SearchOrInsertBelief(
+#     fsc::FSC,
+#     new_weighted_particles::OrderedDict{Int,Float64},
+#     new_heuristic_value::Float64,
+#     b_gap_max::Float64;
+#     Kcandidates::Int = 100
+# )
+#     N = length(fsc._nodes)
+
+#     # Precompute heuristic values for all nodes
+#     heuristic_values = fsc._nodes_VQMDP_labels
+
+#     # Pick top-K nodes closest in heuristic value
+#     diffs = abs.(heuristic_values .- new_heuristic_value)
+#     sorted_idx = sortperm(diffs)
+#     candidate_idxs = sorted_idx[1:min(Kcandidates, N)]
+
+#     min_distance, min_node_idx = SearchSimilarBelief(fsc, candidate_idxs, new_weighted_particles, b_gap_max)
+
+#     # Insert new node if no close match found
+#     if min_distance > b_gap_max
+#         new_node = CreateNode(new_weighted_particles, fsc._action_space, fsc._observation_space)
+#         push!(fsc._nodes, new_node)
+#         push!(fsc._nodes_VQMDP_labels, new_heuristic_value)
+#         return false, length(fsc._nodes)
+#     else
+#         return true, min_node_idx
+#     end
+# end
+
 function SearchOrInsertBelief(
+    model::Model,
     fsc::FSC,
     new_weighted_particles::OrderedDict{Int,Float64},
     new_heuristic_value::Float64,
     b_gap_max::Float64;
-    Kcandidates::Int = 1000
+    Kcandidates::Int = 100,
+    max_lower_value_gap = 1.0
 )
     N = length(fsc._nodes)
 
@@ -403,8 +437,22 @@ function SearchOrInsertBelief(
 
     min_distance, min_node_idx = SearchSimilarBelief(fsc, candidate_idxs, new_weighted_particles, b_gap_max)
 
+
+    # check lower value 
+    lower_value_min_node_idx = fsc._nodes[min_node_idx]._V_lower
+    esti_lower_value_new_node = EstimateLowerValue(new_weighted_particles, 
+                                    discount(model),
+                                    40,
+                                    model,
+                                    fsc,
+                                    min_node_idx,
+                                    20)
+
+
+    lower_value_gap = abs(lower_value_min_node_idx - esti_lower_value_new_node)
+
     # Insert new node if no close match found
-    if min_distance > b_gap_max
+    if min_distance > b_gap_max || lower_value_gap > max_lower_value_gap
         new_node = CreateNode(new_weighted_particles, fsc._action_space, fsc._observation_space)
         push!(fsc._nodes, new_node)
         push!(fsc._nodes_VQMDP_labels, new_heuristic_value)
@@ -413,6 +461,7 @@ function SearchOrInsertBelief(
         return true, min_node_idx
     end
 end
+
 
 
 function Prunning(fsc::FSC; MIN_VISITS::Int = 50)
