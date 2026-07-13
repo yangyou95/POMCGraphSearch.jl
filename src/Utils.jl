@@ -12,8 +12,6 @@ function ExportLogData(planner::Planner, name::String) where {Planner}
     min_length = min(length(planner._Log_result._vec_episodes),
                     length(planner._Log_result._vec_evaluation_value),
                     length(planner._Log_result._vec_upper_bound),
-                    length(planner._Log_result._vec_valid_value),
-                    length(planner._Log_result._vec_unvalid_rate),
                     length(planner._Log_result._vec_fsc_size),
                     length(planner._Log_result._vec_time))
 
@@ -21,13 +19,10 @@ function ExportLogData(planner::Planner, name::String) where {Planner}
     df = DataFrame(episode = planner._Log_result._vec_episodes[1:min_length],
                    lower = planner._Log_result._vec_evaluation_value[1:min_length],
                    upper = planner._Log_result._vec_upper_bound[1:min_length],
-                   valid_value = planner._Log_result._vec_valid_value[1:min_length],
-                   unvalid_rate = planner._Log_result._vec_unvalid_rate[1:min_length],
                    fsc_size = planner._Log_result._vec_fsc_size[1:min_length],
                     time = planner._Log_result._vec_time[1:min_length])
     CSV.write(output_name, string.(df))
 end
-
 
 
 function NormalizeDict(d::OrderedDict{Int, Float64})
