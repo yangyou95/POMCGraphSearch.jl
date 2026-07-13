@@ -256,22 +256,29 @@ end
 
 
 function CustomActionSelection(fsc::FSC, nI::Int64)
-    # node_visits = fsc._nodes[nI]._visits_node
-    # max_value = typemin(Float64)
 
+    lower_Q = fsc._nodes[nI]._Q_action
+    upper_Q = fsc._nodes[nI]._Heuristic_Q_action
 
-    current_max_value, selected_a_lower = findmax(fsc._nodes[nI]._Q_action)
+    # best known lower bound
+    best_lower_value = maximum(values(lower_Q))
 
-    current_upper_value, selected_a_upper = findmax(fsc._nodes[nI]._Heuristic_Q_action)
+    # candidate actions whose upper bound can still beat lower bound
+    candidate_actions = [
+        a for a in keys(upper_Q)
+        if upper_Q[a] >= best_lower_value
+    ]
 
-    # choose upper action with probability 0.5, lower action with probability 0.5
-    if rand() < 0.9
-        selected_a = selected_a_lower
-    else
-        selected_a = selected_a_upper
+    # safety: if numerical issue removes all actions
+    if isempty(candidate_actions)
+        _, selected_a = findmax(upper_Q)
+        return selected_a
     end
 
-    
+    # AEMS1 style: select largest upper bound among candidates
+    selected_a = candidate_actions[argmax(
+        [upper_Q[a] for a in candidate_actions]
+    )]
 
     return selected_a
 end
