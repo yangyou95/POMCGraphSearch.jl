@@ -62,21 +62,10 @@ function ProcessActionWeightedParticle(model::Model,
      	heuristic_value, action_space, heuristic_Q_actions = GetValueQMDP(all_dict_weighted_samples[key], 
 																		Q_learning_policy, 
 																		model)
-		bool_search, n_nextI = SearchOrInsertBelief(model, fsc, all_dict_weighted_samples[key], heuristic_value, fsc._max_accept_belief_gap)
+		bool_search, n_nextI = SearchOrInsertBelief(fsc, all_dict_weighted_samples[key], heuristic_value, fsc._max_accept_belief_gap)
         if !bool_search
             max_Q = HeuristicNodeQ(fsc._nodes[n_nextI], heuristic_Q_actions, ratio_heuristic_Q)
 			fsc._nodes[n_nextI]._V_node = max_Q
-		# else 
-		# 	println("simiar_node_idx:", n_nextI, " lower bound value:", fsc._nodes[n_nextI]._V_lower)
-        # 	esti_lower_value = EstimateLowerValue(all_dict_weighted_samples[key], 
-		# 								discount,
-		# 								40,
-		# 								model,
-		# 								fsc,
-		# 								n_nextI,
-		# 								20)
-
-		# 	println("new belief's esti lower V:", esti_lower_value)
 		end
 		fsc._eta[nI][Pair(a, key)] = n_nextI
 		expected_future_V += fsc._nodes[nI]._dict_a_o_weights[a][key] * fsc._nodes[n_nextI]._V_node
