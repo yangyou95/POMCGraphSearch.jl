@@ -327,6 +327,32 @@ function Solve(pomcgs::SolverPOMCGS)
 end
 
 
+function SolveOnline(pomcgs::SolverPOMCGS, max_steps::Int, planning_time::Float64; verbose::Bool = true)
+    println("----- POMCGS Planning -----")
+    println("Initial belief particle size:", length(pomcgs.model.b0_particles))
+    println("Evaluation simulation number:", pomcgs.nb_eval)
+    println("Max search depth:", pomcgs.max_search_depth)
+    # Run planner
+    if pomcgs.planner === nothing
+        throw(ArgumentError("No planner is defined for POMCGS. Please reinitialize POMCGS."))
+    else
+        SimulationOnline(
+            pomcgs.model,
+            pomcgs.model.b0_particles,
+            pomcgs.b0_processed,
+            pomcgs.fsc,
+            pomcgs.planner,
+            max_steps,
+            planning_time;
+            verbose = verbose
+        )
+    end
+
+    println("--- Planning finished ---")
+end
+
+
+
 function SaveFSCPolicyJLD2(pomcgs::SolverPOMCGS; outfile_name::Union{Nothing, String}=nothing)
     # Decide output filename
     filename = if outfile_name === nothing

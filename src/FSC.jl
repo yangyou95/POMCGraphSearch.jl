@@ -241,8 +241,36 @@ function UcbActionSelection(fsc::FSC, nI::Int64, C_star::Int64)
     return selected_a
 end
 
+function AEMS1_ActionSelection_Hybrid(fsc::FSC, nI::Int64)
+    lower_Q = fsc._nodes[nI]._Q_action
+    upper_Q = fsc._nodes[nI]._Heuristic_Q_action
 
-function CustomActionSelection(fsc::FSC, nI::Int64)
+    # 1. 找出当前最优下界动作（安全保守的选择）
+    best_lower_value = maximum(values(lower_Q))
+    best_lower_actions = [a for a in keys(lower_Q) if abs(lower_Q[a] - best_lower_value) < 1e-9]
+    action_lower = rand(best_lower_actions)  # 如果有多个，随机选一个
+
+    # 2. 找出当前最优上界动作（乐观激进的选择）
+    best_upper_value = maximum(values(upper_Q))
+    best_upper_actions = [a for a in keys(upper_Q) if abs(upper_Q[a] - best_upper_value) < 1e-9]
+    action_upper = rand(best_upper_actions)  # 如果有多个，随机选一个
+
+    # 3. 如果两个动作相同，直接返回
+    if action_lower == action_upper
+        return action_lower
+    end
+
+    # 4. 随机在两者之间选择一个
+    # 可以使用固定的概率（如50/50），也可以根据上下界差距动态调整
+    # 这里使用50/50的均匀随机选择
+    if rand() < 0.5
+        return action_lower
+    else
+        return action_upper
+    end
+end
+
+function AEMS2_ActionSelection(fsc::FSC, nI::Int64)
 
     lower_Q = fsc._nodes[nI]._Q_action
     upper_Q = fsc._nodes[nI]._Heuristic_Q_action
@@ -325,7 +353,8 @@ function ActionProgressiveWidening(fsc::FSC, nI::Int, action_space, K_a::Float64
         AddNewAction(fsc._nodes[nI], a)
         return a
     else
-        return UcbActionSelection(fsc, nI, C_star) 
+        # return UcbActionSelection(fsc, nI, C_star) 
+        return AEMS2_ActionSelection(fsc, nI)
     end
 end
 
