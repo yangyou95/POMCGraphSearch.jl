@@ -101,8 +101,7 @@ function Simulate(model::Model,
 	if bool_APW
         a = ActionProgressiveWidening(fsc, nI, fsc._action_space, k_a, alpha_a, C_star)
     else
-        # a = UcbActionSelection(fsc, nI, C_star)
-		a = CustomActionSelection(fsc, nI)
+		a = AEMS2_ActionSelection(fsc, nI)
     end
 
 
@@ -393,3 +392,98 @@ end
 
 
 
+function SimulationOnline(model::Model,
+						b::Vector{Int},
+						dict_weighted_b::OrderedDict{Int, Float64},
+						fsc::FSC,
+						planner::Planner,
+						max_steps::Int,
+						planning_time::Float64;
+						verbose::Bool = true)
+
+	pomdp = model.pomdp
+	b0 = initialstate(pomdp)
+
+	# assume an empty fsc
+	node_start = CreateNode(dict_weighted_b, fsc._action_space, fsc._observation_space)
+	heuristic_value, action_space, heuristic_Q_actions = GetValueQMDP(dict_weighted_b, 
+																	planner._Q_learning_policy, 
+																	model)
+
+
+	HeuristicNodeQ(node_start, heuristic_Q_actions, planner._ratio_heuristic_Q)
+	push!(fsc._nodes, node_start)
+    push!(fsc._nodes_VQMDP_labels, maximum(values(node_start._Heuristic_Q_action)))
+
+    obs_cluster_model = fsc._obs_kmeans_centroids
+    bool_continuous_observations = length(obs_cluster_model) > 0
+
+	# --- Initialize starting state ---
+    s = rand(b0)
+    nI = 1
+    sum_r = 0.0
+    step = 0
+	discount = planner._discount
+
+    while step ≤ max_steps && POMDPs.isterminal(pomdp, s) == false
+
+		# run online planning with given planning_time 
+		sum_planning_time_secs = 0
+		for i in 1:planner._nb_iter
+			elapsed_time = @elapsed begin
+				Simulate(model,
+					fsc,
+					nI,
+					step,
+					planner._max_search_depth,
+					planner._discount,
+					planner._C_star,
+					planner._epsilon,
+					planner._Q_learning_policy,
+					planner._ratio_heuristic_Q,
+					planner._bool_APW,
+					planner._k_a,
+					planner._alpha_a)
+			end
+
+			sum_planning_time_secs += elapsed_time
+			
+			if sum_planning_time_secs > planning_time
+				break
+			end
+		end
+
+
+        a = GetBestAction(fsc._nodes[nI])
+        sp, o, r = @gen(:sp, :o, :r)(pomdp, s, a)
+
+        if bool_continuous_observations
+            o_vec = convert_o(Vector{Float64}, o, pomdp)
+            o = predict_cluster(obs_cluster_model, o_vec)
+        end
+
+        sum_r += (discount^step) * r
+
+        if verbose
+            println("---------")
+            println("Step: ", step)
+            println("State: ", s)
+            println("Action: ", a)
+            println("Observation: ", o)
+            println("Reward: ", r)
+            println("Node: ", nI)
+            println("Node visits: ", fsc._nodes[nI]._visits_node)
+            println("Node value: ", fsc._nodes[nI]._V_node)
+        end
+
+        s = sp
+        nI = transition(fsc, nI, a, o)
+        step += 1
+    end
+
+    if verbose
+        println("Simulation finished after $step steps. Total discounted reward: $sum_r")
+    end
+
+    return sum_r
+end
