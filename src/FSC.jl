@@ -223,19 +223,6 @@ function UcbActionSelection(fsc::FSC, nI::Int64, C_star::Int64)
 
 
         # this one seems works a bit 
-        # c = (fsc._nodes[nI]._V_upper - fsc._nodes[nI]._Q_action[a]) / fsc._nodes[nI]._V_upper 
-
-        # c = (fsc._nodes[nI]._V_upper - fsc._nodes[nI]._Q_action[a]) / node_a_visits
-
-        # c = (fsc._nodes[nI]._Heuristic_Q_action[a] - fsc._nodes[nI]._Q_action[a]) / node_a_visits
-
-        # c = (current_upper_value - fsc._nodes[nI]._Q_action[a]) / node_a_visits
-
-
-        # c = (current_upper_value - fsc._nodes[nI]._Q_action[a]) / current_upper_value
-
-        # c = (fsc._nodes[nI]._Heuristic_Q_action[a] - fsc._nodes[nI]._Q_action[a]) / fsc._nodes[nI]._Heuristic_Q_action[a]
-
         if node_a_visits == 0
             ratio_visit = log(node_visits + 1) / 0.1
         else

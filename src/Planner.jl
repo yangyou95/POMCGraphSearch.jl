@@ -66,6 +66,7 @@ function ProcessActionWeightedParticle(model::Model,
         if !bool_search
             max_Q = HeuristicNodeQ(fsc._nodes[n_nextI], heuristic_Q_actions, ratio_heuristic_Q)
 			fsc._nodes[n_nextI]._V_node = max_Q
+			# fsc._nodes[n_nextI]._V_node = 0.0
 		end
 		fsc._eta[nI][Pair(a, key)] = n_nextI
 		expected_future_V += fsc._nodes[nI]._dict_a_o_weights[a][key] * fsc._nodes[n_nextI]._V_node
