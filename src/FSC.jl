@@ -324,10 +324,10 @@ function SelectObs(fsc::FSC, nI::Int64, a_best::A) where {A}
         gap = U - L
         
 
-        # Warning for U < L
-        if U < L && abs(U - L) > 1e-2
-            @warn "U < L for obs $o (U=$U, L=$L), FSC node=$(child._fsc_node_index)"
-        end
+        # # Warning for U < L
+        # if U < L && abs(U - L) > 1e-2
+        #     @warn "U < L for obs $o (U=$U, L=$L), FSC node=$(child._fsc_node_index)"
+        # end
         
         weighted_gap = w * gap
         if weighted_gap > excess_uncertainty

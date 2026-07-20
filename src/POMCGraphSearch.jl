@@ -336,6 +336,19 @@ function SolveOnline(pomcgs::SolverPOMCGS, max_steps::Int, planning_time::Float6
     if pomcgs.planner === nothing
         throw(ArgumentError("No planner is defined for POMCGS. Please reinitialize POMCGS."))
     else
+
+
+
+		fsc = InitFSC(pomcgs.max_b_gap, 
+                        pomcgs.max_graph_node_size, 
+                        pomcgs.action_space, 
+                        pomcgs.observation_space, 
+                        pomcgs.pomdp)
+
+        fsc._obs_kmeans_centroids = pomcgs.obs_cluster_model
+
+        pomcgs.fsc = fsc
+
         SimulationOnline(
             pomcgs.model,
             pomcgs.model.b0_particles,
